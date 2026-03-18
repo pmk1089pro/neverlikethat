@@ -70,7 +70,7 @@ try:
                 if h_search[4] is not None:
                     h_sym = h_search[4]
                     h_q = get_entire_quote(h_sym, user)
-                    hedge_result = (h_sym, strike + h_offset, expiry, h_q.get('last_price', 0))
+                    hedge_result = (h_sym, strike + h_offset, expiry, h_q.get('last_price', 0),None)
                     break
                     
                 print(f"⚠️{key} | {user['user']} Search Attempt {attempt+1} failed to find an Hedge option. Retrying in 2s...")
