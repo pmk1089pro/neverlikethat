@@ -58,7 +58,7 @@ try:
                 h_search = get_robust_optimal_option(
                     signal="SELL", 
                     spot=close, 
-                    nearest_price=0, # Fixed offset search
+                    nearest_price=config['NEAREST_LTP'], # Fixed offset search
                     instruments_df=instruments_df, 
                     config=config, 
                     user=user, 
