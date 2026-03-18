@@ -89,7 +89,7 @@ try:
     else:
         # 4. EXECUTION
         opt_symbol, strike, expiry, ltp, _ = result
-        hedge_opt_symbol, hedge_strike, hedge_expiry, hedge_ltp = hedge_result if hedge_result else (None, None, None, 0)
+        hedge_opt_symbol, hedge_strike, hedge_expiry, hedge_ltp, _ = hedge_result if hedge_result else (None, None, None, 0, None)
 
         temp_trade_symbols = {
             "OptionSymbol": opt_symbol,
