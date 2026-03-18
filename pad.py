@@ -1,55 +1,61 @@
-# --- ENTRY CODE EXECUTION :: START ---
+# --- ENTRY CODE EXECUTION (SELL) :: START ---
 try:
-    hedge_required = config['HEDGE_TYPE'] != "NH"
-    # Set the offset based on config
-    h_offset = 200 if config['HEDGE_TYPE'] == "H-M200" else 100
+    h_type = config['HEDGE_TYPE']
+    h_required = h_type != "NH"
+    h_offset = 200 if h_type == "H-M200" else 100
     
     result = (None, None, None, None, None)
-    
-    # 1. UNIFIED SEARCH
+    hedge_result = (None, None, None, None, None)
+
+    # 1. FIND MAIN OPTION
     for attempt in range(3):
-        if config['HEDGE_TYPE'] == "H-P10":
-            # For P10, find Main first (Hedge Required=False for this call)
-            result = get_robust_optimal_option(signal="BUY", spot=close, nearest_price=config['NEAREST_LTP'], 
-                                             instruments_df=instruments_df, config=config, user=user, hedge_required=False)
-            
-            # Then find P10 Hedge separately
-            m_sym, m_strike, m_exp, m_ltp, _ = result
-            if m_sym:
-                h_res = get_robust_optimal_option(signal="BUY", spot=close, nearest_price=HEDGE_NEAREST_LTP, 
-                                                instruments_df=instruments_df, config=config, user=user, hedge_required=False)
-                if h_res[0]:
-                    # Combine Main from first call and Hedge from second call
-                    result = (m_sym, m_strike, m_exp, m_ltp, h_res[0])
-                else: result = (None,) * 5
-        else:
-            # For M100/M200 or NH, use the single robust call (It handles the offset internally)
-            result = get_robust_optimal_option(signal="BUY", spot=close, nearest_price=config['NEAREST_LTP'], 
-                                             instruments_df=instruments_df, config=config, user=user, 
-                                             hedge_offset=h_offset, hedge_required=hedge_required)
-        
-        if result[0] is not None: break
+        result = get_robust_optimal_option(signal="SELL", spot=close, nearest_price=config['NEAREST_LTP'], 
+                                         instruments_df=instruments_df, config=config, user=user, hedge_required=False)
+        if result[0]: break
         time.sleep(2)
 
-    # 2. VALIDATION & EXECUTION
-    opt_symbol, strike, expiry, ltp, hedge_opt_symbol = result
+    opt_symbol, strike, expiry, ltp, _ = result
 
-    if opt_symbol is None or (hedge_required and hedge_opt_symbol is None):
-        logging.error(f"❌{key} | No Pair Found.")
+    # 2. FIND HEDGE OPTION
+    if opt_symbol and h_required:
+        if h_type == "H-P10":
+            for attempt in range(3):
+                hedge_result = get_robust_optimal_option(signal="SELL", spot=close, nearest_price=HEDGE_NEAREST_LTP, 
+                                                       instruments_df=instruments_df, config=config, user=user, hedge_required=False)
+                if hedge_result[0]: break
+                time.sleep(2)
+        elif h_type in ["H-M100", "H-M200"]:
+            for attempt in range(3):
+                h_res = get_robust_optimal_option(signal="SELL", spot=close, nearest_price=0, instruments_df=instruments_df, 
+                                                config=config, user=user, hedge_offset=h_offset, hedge_required=True)
+                if h_res[4]:
+                    h_q = get_entire_quote(h_res[4], user)
+                    hedge_result = (h_res[4], strike + h_offset, expiry, h_q.get('last_price', 0))
+                    break
+                time.sleep(2)
+
+    # 3. VALIDATION & EXECUTION
+    hedge_opt_symbol, hedge_strike, hedge_expiry, hedge_ltp = hedge_result if hedge_result else (None, None, None, 0)
+
+    if opt_symbol is None or (h_required and hedge_opt_symbol is None):
+        logging.error(f"❌{key} | No suitable Pair found for SELL.")
         continue 
     
-    # 3. EXECUTE ORDERS
-    temp_trade_symbols = {"OptionSymbol": opt_symbol, "hedge_option_symbol": hedge_opt_symbol}
-    qty, avg_price, hedge_avg_price = execute_robust_entry(temp_trade_symbols, config, user)
+    qty, avg_price, h_avg_price = execute_robust_entry({"OptionSymbol": opt_symbol, "hedge_option_symbol": hedge_opt_symbol}, config, user)
 
-    if is_valid_trade_data(qty, avg_price, hedge_avg_price, hedge_required):
-        trade = {
-            "Signal": "BUY", "SpotEntry": close, "OptionSymbol": opt_symbol, "Strike": strike, "Expiry": expiry,
-            "OptionSellPrice": avg_price, "EntryTime": current_time, "qty": qty, "Key": key, 
-            "hedge_option_symbol": hedge_opt_symbol, "hedge_option_buy_price": hedge_avg_price, "hedge_qty": qty if hedge_required else 0
-        }
-        save_open_position(get_clean_trade(trade), config, user['id'])
-        send_telegram_message(f"🟢{key} | Executed: {opt_symbol} + {hedge_opt_symbol}", user['telegram_chat_id'], user['telegram_token'])
+    if is_valid_trade_data(qty, avg_price, h_avg_price, h_required):
+        # --- CLEAN TRADE WRAPPER ---
+        trade = get_clean_trade({
+            "Signal": "SELL", "SpotEntry": close, "OptionSymbol": opt_symbol, "Strike": strike, "Expiry": expiry,
+            "OptionSellPrice": avg_price, "EntryTime": current_time, "qty": qty, "interval": config['INTERVAL'], 
+            "real_trade": config['REAL_TRADE'], "EntryReason":"SIGNAL_GENERATED", "ExpiryType":config['EXPIRY'],
+            "Strategy":config['STRATEGY'], "Key":key, "hedge_option_symbol":hedge_opt_symbol,
+            "hedge_strike":hedge_strike, "hedge_option_buy_price":h_avg_price,
+            "hedge_qty": qty if h_required else 0, "hedge_entry_time": current_time
+        })
+        save_open_position(trade, config, user['id'])
+        position = "SELL"
+        send_telegram_message(f"🔴{key} | Executed SELL: {opt_symbol} @ {avg_price}", user['telegram_chat_id'], user['telegram_token'])
 
 except Exception as e:
-    logging.error(f"❌ Entry Error: {e}")
+    logging.error(f"❌ SELL Entry Error: {e}")
