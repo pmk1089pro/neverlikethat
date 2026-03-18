@@ -1598,3 +1598,4 @@ def execute_robust_exit(trade, config, user, expiry_match="DIFF"):
     
     logging.info(f"🏁 EXIT Complete | Main: {main_filled_total} @ {round(final_m_avg, 2)} | Hedge: {hedge_filled_total}")
     return main_filled_total, final_m_avg, final_h_avg
+
