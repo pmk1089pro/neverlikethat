@@ -65,7 +65,7 @@ exit_qty, exit_avg, exit_h_avg = execute_robust_exit(
     expiry_match=expiry_match
 )
 
-# ✅ FIX: safe override (no accidental zero overwrite)
+# safe overwrite
 if expiry_match == "SAME" and not qty_changed and hedge_ltp > 0:
     exit_h_avg = hedge_ltp
 
@@ -84,7 +84,7 @@ if exit_qty > 0 and exit_avg > 0 and exit_h_avg > 0:
         "hedge_pnl": (exit_h_avg - trade["hedge_option_buy_price"]) if exit_h_avg > 0 else 0,
 
         "total_pnl": (trade["OptionSellPrice"] - exit_avg) +
-                     (exit_h_avg - trade["hedge_option_buy_price"])
+                     ((exit_h_avg - trade["hedge_option_buy_price"]) if exit_h_avg > 0 else 0)
     })
 
 else:
@@ -151,7 +151,6 @@ if expiry_match == "DIFF" or config['HEDGE_ROLLOVER_TYPE'] == 'FULL':
                 logging.info(f"⚠️ Search Attempt {attempt+1} failed for hedge. Retrying...")
                 time.sleep(2)
 
-    # ✅ FIX: fallback instead of breaking logic
     if hedge_result and hedge_result[0] is not None:
         hedge_opt_symbol, hedge_strike, hedge_expiry, hedge_ltp = hedge_result
     else:
@@ -187,10 +186,13 @@ logging.info(
     f"Hedge {hedge_opt_symbol} @ ₹{new_h_avg:.2f}"
 )
 
-# -------------------------------
-# VALIDATION (FIXED)
-# -------------------------------
-if not is_valid_trade_data(new_qty, new_avg, new_h_avg, hedge_required=True):
+# validation
+if not is_valid_trade_data(
+    new_qty,
+    new_avg,
+    new_h_avg,
+    hedge_required=(config['HEDGE_TYPE'] != "NH")
+):
     err_msg = f"⚠️ {key} | FAILED Entry: Qty ({new_qty}) or Price ({new_avg}) or Hedge ({new_h_avg}) invalid"
     logging.error(err_msg)
     send_telegram_message_admin(err_msg)
