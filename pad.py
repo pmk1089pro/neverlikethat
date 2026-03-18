@@ -152,7 +152,7 @@ if expiry_match == "DIFF" or config['HEDGE_ROLLOVER_TYPE'] == 'FULL':
                 time.sleep(2)
 
     if hedge_result and hedge_result[0] is not None:
-        hedge_opt_symbol, hedge_strike, hedge_expiry, hedge_ltp = hedge_result
+        hedge_opt_symbol, hedge_strike, hedge_expiry, hedge_ltp,_ = hedge_result
     else:
         logging.error(f"⚠️ {key} | Hedge not found, using previous hedge if available")
 
